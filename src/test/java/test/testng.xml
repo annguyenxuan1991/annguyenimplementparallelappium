@@ -1,7 +1,16 @@
-<suite name="Test-method Suite" parallel="methods" thread-count="2" >
-    <test name="Parallel">
+<suite name="Suite1" parallel="tests">
+    <test name="Device A">
         <classes>
             <class name="test.Runner"/>
         </classes>
     </test>
+<!--    <test name="Device B">
+        <classes>
+            <class name="test.Runner"/>
+        </classes>
+    </test>-->
 </suite>
+
+
+
+
