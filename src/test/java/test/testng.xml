@@ -4,11 +4,11 @@
             <class name="test.Runner"/>
         </classes>
     </test>
-<!--    <test name="Device B">
+    <test name="Device B">
         <classes>
             <class name="test.Runner"/>
         </classes>
-    </test>-->
+    </test>
 </suite>
 
 

@@ -2,26 +2,27 @@ package test;
 
 import core.managers.DriverManager;
 import core.managers.ParallelManager;
+import org.testng.ITestContext;
+import org.testng.ITestListener;
+import org.testng.ITestResult;
 import org.testng.annotations.*;
 
 import java.io.IOException;
 
-public class Hook {
+public class Hook implements ITestListener {
 
 
     @BeforeSuite
     public void beforeSuite() {
-
-
+        DriverManager.setUpDevice();
     }
 
     @BeforeTest
     public void beforeTest() throws IOException {
         //2 threads
         System.out.println("before Test: " + Thread.currentThread().getId());
-        ParallelManager.setAppiumService(new DriverManager().createService());
-        ParallelManager.startAppiumService();
-        ParallelManager.setDriver(new DriverManager().createDriver());
+        ParallelManager.setAppiumService(DriverManager.createService());
+        ParallelManager.setDriver(DriverManager.createDriver());
     }
 
     @BeforeClass
@@ -55,5 +56,41 @@ public class Hook {
     @AfterMethod
     public void afterMethod() {
         //2 thread
+        DriverManager.freeDevice();
+    }
+
+    @Override
+    public void onTestStart(ITestResult iTestResult) {
+
+    }
+
+    @Override
+    public void onTestSuccess(ITestResult iTestResult) {
+
+    }
+
+    @Override
+    public void onTestFailure(ITestResult iTestResult) {
+
+    }
+
+    @Override
+    public void onTestSkipped(ITestResult iTestResult) {
+
+    }
+
+    @Override
+    public void onTestFailedButWithinSuccessPercentage(ITestResult iTestResult) {
+
+    }
+
+    @Override
+    public void onStart(ITestContext iTestContext) {
+
+    }
+
+    @Override
+    public void onFinish(ITestContext iTestContext) {
+
     }
 }

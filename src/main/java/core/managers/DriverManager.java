@@ -11,46 +11,45 @@ import io.appium.java_client.service.local.AppiumServiceBuilder;
 import org.apache.log4j.Logger;
 import org.json.simple.JSONObject;
 import org.openqa.selenium.remote.DesiredCapabilities;
-import org.openqa.selenium.remote.service.DriverService;
 
 import java.io.File;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class DriverManager {
 
     private static Logger logger = Logger.getLogger(DriverManager.class);
 
-    private DriverService service = null;
+    private static ConcurrentHashMap<String, Boolean> dataMapping = ParallelManager.dataMapping;
 
-    private String deviceID;
-
-    private int generateRandomPort(int min, int max) {
+    private static int generateRandomPort(int min, int max) {
         Random random = new Random();
         return random.nextInt((max - min) + 1) + min;
     }
 
 
-    public DriverService createService() throws MalformedURLException {
+    public synchronized static AppiumDriverLocalService createService() throws MalformedURLException {
+        setAvailableDevice();
         //Random appium port from 1000 to 9999
         int port = generateRandomPort(1000, 9999);
 
         logger.info("Creating Appium service with IP address/port: " + ConfigPath.APPIUM_IPADDRESS + ":" + port);
-        service = new AppiumServiceBuilder()
+        AppiumDriverLocalService service = new AppiumServiceBuilder()
                 .usingDriverExecutable(new File(ConfigPath.NODEJS_PATH))
                 .withAppiumJS(new File(ConfigPath.APPIUM_PATH))
-                .withIPAddress(ConfigPath.APPIUM_IPADDRESS)
-                .usingPort(port)
+                .withIPAddress(ConfigPath.APPIUM_IPADDRESS).usingPort(port)
                 .withArgument(Arg.TIMEOUT, "120")
                 .withArgument(Arg.LOG_LEVEL, "warn")
                 .build();
+        service.start();
         return service;
     }
 
-    public synchronized DesiredCapabilities getCapsAndroidDevice() {
-        getAvailableDevice();
+    private static synchronized DesiredCapabilities getCapsAndroidDevice() {
+        String deviceID = ParallelManager.getDeviceID();
         logger.info("Creating driver caps for device: "+deviceID);
         DesiredCapabilities caps = new DesiredCapabilities();
         caps.setCapability("version", new ADB(deviceID).getAndroidVersion());
@@ -61,32 +60,46 @@ public class DriverManager {
         return caps;
     }
 
-    public Object createDriver() {
-        if (new ADB(deviceID).getOSName().equals("Android")) {
-            return new AndroidDriver((AppiumDriverLocalService) ParallelManager.getAppiumService(), getCapsAndroidDevice());
-        }
+    public static Object createDriver() {
+        String deviceID = ParallelManager.getDeviceID();
+        if (true) {
+            return new AndroidDriver(ParallelManager.getAppiumService(), getCapsAndroidDevice());
+        } else if(new ADB(deviceID).getOSName().contains("iOS"))
+            return null;
         return null;
     }
 
-    private synchronized void getAvailableDevice() {
-        ArrayList<String> devices = getConntectedDevices();
-        for(String device : devices){
-            try{
-                deviceID = device;
-                if(useDevice(deviceID)){
-                    queueUp();
-                    gracePeriod();
-                    leaveQueue();
-                    break;
-                }
-            }catch (Exception e){
-                e.printStackTrace();
-                //Ignore and try next device
+    private static synchronized void setAvailableDevice() {
+        ConcurrentHashMap<String, String> dataMappingThread = ParallelManager.dataMappingThread;
+        ConcurrentHashMap.KeySetView<String, Boolean> dataIDList = dataMapping.keySet();
+
+        String threadId = String.valueOf(Thread.currentThread().getId());
+        for (String dataID : dataIDList) {
+            if (dataMapping.get(dataID)
+                    && (dataMappingThread.get(dataID) == null
+                    || dataMappingThread.get(dataID).equals(threadId))) {
+                dataMapping.put(dataID, false);
+                dataMappingThread.put(dataID, threadId);
+
+                ParallelManager.setDeviceID(dataID);
             }
         }
     }
 
-    private ArrayList<String> getConntectedDevices(){
+    public static void setUpDevice() {
+        ArrayList<String> connectedDevices = getConntectedDevices();
+        for(String device: connectedDevices) {
+            dataMapping.put(device, true);
+        }
+    }
+
+    public static void freeDevice()
+    {
+        String deviceID = ParallelManager.getDeviceID();
+        dataMapping.put(deviceID, true);
+    }
+
+    private static ArrayList<String> getConntectedDevices(){
         logger.info("Checking for available devices");
         ArrayList<String> availableDevices = new ArrayList<>();
         ArrayList connectedDevices = ADB.getConnectedDevices();
@@ -94,9 +107,23 @@ public class DriverManager {
             String device = connectedDevice.toString();
             availableDevices.add(device);
         }
-        if(availableDevices.size() == 0) throw new RuntimeException("Not a single device is available for testing at this time");
+        if(availableDevices.size() == 0) throw new RuntimeException("Not a single device is connected for testing at this time");
         return availableDevices;
     }
+
+
+    /*    private synchronized void getAvailableDevice() {
+        ArrayList<String> devices = getConntectedDevices();
+        for(String device : devices){
+                if(useDevice(device)){
+                    deviceID = device;
+                    queueUp();
+                    gracePeriod();
+                    leaveQueue();
+                    break;
+                }
+        }
+    }*/
 
     private boolean useDevice(String deviceID) {
         JSONObject json = Resources.getQueue();
@@ -111,6 +138,7 @@ public class DriverManager {
 
     private void queueUp() {
         try {
+            String deviceID = ParallelManager.getDeviceID();
             logger.info("Queueing Up: "+deviceID);
             JSONObject json = new JSONObject();
             json.put("queued_at", Timer.getTimeStamp());
@@ -123,6 +151,7 @@ public class DriverManager {
         }
     }
     private void gracePeriod(){
+        String deviceID = ParallelManager.getDeviceID();
         int waitTime = 0;
         try {
             JSONObject  json = Resources.getQueue();
@@ -152,6 +181,7 @@ public class DriverManager {
     }
 
     private void leaveQueue(){
+        String deviceID = ParallelManager.getDeviceID();
         try {
             JSONObject jsonQueue = Resources.getQueue();
             jsonQueue.remove(deviceID);
